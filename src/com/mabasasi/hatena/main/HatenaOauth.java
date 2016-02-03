@@ -1,10 +1,12 @@
 package com.mabasasi.hatena.main;
 
 
-import utility.PropertiesLoader;
-import exception.HttpConnectionException;
-import exception.UnexpectedValueException;
-import data.UserProfile;
+
+import com.mabasasi.hatena.data.SystemData;
+import static com.mabasasi.hatena.parameter.SystemParameter.*;
+import com.mabasasi.hatena.utility.HttpConnectionException;
+import com.mabasasi.hatena.utility.NetIO;
+import static com.mabasasi.hatena.utility.NetIO.convertToString;
 import java.awt.Component;
 import java.awt.Desktop;
 import java.io.*;
@@ -17,11 +19,6 @@ import oauth.signpost.basic.DefaultOAuthConsumer;
 import oauth.signpost.basic.DefaultOAuthProvider;
 import static oauth.signpost.OAuth.OUT_OF_BAND;
 import oauth.signpost.exception.*;
-import org.json.simple.JSONObject;
-import org.json.simple.parser.JSONParser;
-import org.json.simple.parser.ParseException;
-import static utility.HttpConnectionUtility.convertToString;
-import static utility.HttpConnectionUtility.getHttpResponse;
 
 
 
@@ -30,25 +27,12 @@ import static utility.HttpConnectionUtility.getHttpResponse;
  * @author mabasasi
  */
 public class HatenaOauth {
-    private static final String TEMPORARY_REQUEST_URL = "https://www.hatena.com/oauth/initiate";
-    private static final String AUTHORIZATION_URL = "https://www.hatena.ne.jp/touch/oauth/authorize";
-    private static final String TOKEN_REQUEST_URL = "https://www.hatena.com/oauth/token";
-    
-    private String informationURL = "http://n.hatena.com/applications/my.json";
-    
-    
-    
     private final OAuthConsumer consumer;
-    private PropertiesLoader prop;
-
-    private String accessToken;
-    private String accessTokenSecret;
-    
-    
-    
-    private String scope;
-    private String blogId;
-        
+    private OAuthProvider provider;
+//
+//    private String accessToken;
+//    private String accessTokenSecret;
+//        
     /**
      * OAuthの初期化.
      * <p>
@@ -56,56 +40,88 @@ public class HatenaOauth {
      * プロパティがある場合は、ついでに読み込む。
      * </p>
      * @param consumerKey 公開鍵
-     * @param consumerSecret 秘密鍵ｓ
+     * @param consumerSecret 秘密鍵
      */
     public HatenaOauth(String consumerKey, String consumerSecret){
         // consumer作成
         consumer = new DefaultOAuthConsumer(consumerKey, consumerSecret);
-        
-        // プロパティ読み込み
-        try {
-            prop = new PropertiesLoader("oauth.properties", false);
-            
-            accessToken       = prop.getProperty("oauth_token");
-            accessTokenSecret = prop.getProperty("oauth_token_secret");
-            scope             = prop.getProperty("access_scope");
-            blogId            = prop.getProperty("blog_id");
-            
-        } catch (IOException ex) {
-            // TODO: 現状必要ないので、握りつぶしている
-            ex.printStackTrace();
-        }
     }
     
+    public HatenaOauth(SystemData system) {
+        this(system.getText(consumerKey), system.getText(consumerSecret));
+        this.createProvider(system.getText(temporaryRequestURL), system.getText(tokenRequestURL), system.getText(authorizationURL), system.getText(accessScope));
+        this.setAccessToken(system.getText(accessToken), system.getText(tokenSecret));
+    }
     
     /**
-     * PIN値を取得する.
-     * @param provider プロバイダー
-     * @param parent 親コンポーネント
-     * @return PIN入力成功可否
+     *
+     * @param temporaryRequestURL
+     * @param tokenRequestUrl
+     * @param AuthorizationUrl
+     * @param scope
      */
-    private boolean pinInputDialog(OAuthProvider provider, Component parent){
-        // ダイアログ作成
-        String title = "Hatena Authorization";
-        String message = "ブラウザで認証してください。\nPIN:";
-        ImageIcon icon = new ImageIcon(getClass().getClassLoader().getResource("source\\logo_oauth.png"));
-        
-        while(true){
-            // TODO : 最前面、ブラウザ再表示などを付ける
-            Object result = JOptionPane.showInputDialog(parent, message, title, JOptionPane.INFORMATION_MESSAGE, icon, null, null);
-            if (result == null){
-                // キャンセルされた
-                return false;
-            } else {
-                // 入力したら問い合わせて、成功したら戻る
-                try {
-                    String pin = (String) result;
-                    provider.retrieveAccessToken(consumer, pin);
-                    return true;
-                } catch (OAuthException ex){ }
+    public void createProvider(String temporaryRequestURL, String tokenRequestUrl, String AuthorizationUrl, String scope) {
+        // RequestTokenURLにscopeを付ける
+        String request = temporaryRequestURL + ((scope.equals("")) ? "" : "?scope="+scope);
+
+        // provider作成
+        this.provider = new DefaultOAuthProvider(request, tokenRequestUrl, AuthorizationUrl);
+    }
+    
+    /**
+     *
+     * @param accessToken
+     * @param tokenSecret
+     */
+    public void setAccessToken(String accessToken, String tokenSecret){
+        consumer.setTokenWithSecret(accessToken, tokenSecret);
+    }
+    
+    public String getToken() {
+        return consumer.getToken();
+    }
+    
+    public String getTokenSecret() {
+        return consumer.getTokenSecret();
+    }
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+
+    /**
+     * ユーザー情報が読み取れるか確認.
+     * @return ユーザー情報　nullで取得失敗
+     */
+    public String getUserJsonData(String informationURL){
+        // HTTPリクエストを作成する
+        URL url = null;
+        try {
+            url = new URL(informationURL);
+            return convertToString(NetIO.getHttpResponse(url, "GET", consumer));
+        } catch (MalformedURLException | HttpConnectionException | UnsupportedEncodingException ex) {
+            // 取得できなかったらOAuth認証を試してみる
+            ex.printStackTrace();
+            try {
+                getAccessToken();
+                return convertToString(NetIO.getHttpResponse(url, "GET", consumer));
+            } catch (OAuthException | IOException | URISyntaxException | IllegalAccessException | HttpConnectionException exx) {
+                exx.printStackTrace();
             }
         }
+        
+        return null;
     }
+    
+    
+    
     
     
     /**
@@ -121,89 +137,50 @@ public class HatenaOauth {
      * @throws java.net.URISyntaxException URLが開けない
      * @throws UnexpectedValueException PIN入力失敗
      */
-    public void getAccessToken(Component parent) throws OAuthException, IOException, URISyntaxException, UnexpectedValueException {
-        // RequestTokenURLにscopeを付ける
-        String requestURL = TEMPORARY_REQUEST_URL + ((scope.equals("")) ? "" : "?scope="+scope);
-
-        // provider作成
-        OAuthProvider provider = new DefaultOAuthProvider(requestURL, TOKEN_REQUEST_URL, AUTHORIZATION_URL);
-
+    public void getAccessToken() throws OAuthException, IOException, URISyntaxException, IllegalAccessException {
         // ブラウザで認証させる
         String url = provider.retrieveRequestToken(consumer, OUT_OF_BAND);
         Desktop desktop = Desktop.getDesktop();
         desktop.browse(new URI(url));
 
         // pin設定
-        boolean pinResult = pinInputDialog(provider, parent);
+        boolean pinResult = pinInputDialog(provider, null);
         if (!pinResult){
-            throw new UnexpectedValueException("PIN入力に失敗しました。");
+            throw new IllegalAccessException("PIN入力に失敗しました。");
         }
-
-        // アクセストークン取得
-        accessToken = consumer.getToken();
-        accessTokenSecret = consumer.getTokenSecret();
+        
+        // AccessToken関連付け
+        String accessToken = consumer.getToken();
+        String tokenSecret = consumer.getTokenSecret();
+        this.setAccessToken(accessToken, tokenSecret);
     }
     
     /**
-     * ユーザー情報が読み取れるか確認.
-     * @return ユーザー情報　nullで取得失敗
+     * PIN値を取得する.
+     * @param provider プロバイダー
+     * @param parent 親コンポーネント
+     * @return PIN入力成功可否
      */
-    public UserProfile getUserJsonData(){
-        consumer.setTokenWithSecret(accessToken, accessTokenSecret);
+    private boolean pinInputDialog(OAuthProvider provider, Component parent){
+        // ダイアログ作成
+        String title = "Hatena Authorization";
+        String message = "ブラウザで認証してください。\nPIN:";
+        ImageIcon icon = new ImageIcon(getClass().getClassLoader().getResource("logo_oauth.png"));
         
-        // HTTPリクエストを作成する
-        try {
-            URL url = new URL(informationURL);
-            String source = convertToString(getHttpResponse(url, "GET", consumer));
-            
-            UserProfile profile = getHatenaUserData(source);
-            if (profile != null){
-                profile.Consumer = consumer;
-                profile.blogId = blogId;
-                
-                return profile;
+        while(true){
+            // TODO : 最前面、ブラウザ再表示などを付ける
+            Object result = JOptionPane.showInputDialog(parent, message, title, JOptionPane.INFORMATION_MESSAGE, icon, null, null);
+            if (result == null){
+                // キャンセルされた
+                return false;
+            } else {
+                // 入力したら問い合わせて、成功したら戻る
+                try {
+                    String pin = (String) result;
+                    provider.retrieveAccessToken(consumer, pin);
+                    return true;
+                } catch (OAuthException ex){ }
             }
-        } catch (MalformedURLException | HttpConnectionException | UnsupportedEncodingException ex) {
-            // 例外出てもnull
-            ex.printStackTrace();
-        }
-        
-        return null;
-    }
-
-    /**
-     * はてなユーザーデータをパースする.
-     * @param reader JSONデータ
-     */
-    private UserProfile getHatenaUserData(String str) {
-        try {
-            JSONParser parser = new JSONParser();
-            JSONObject obj = (JSONObject) parser.parse(str);
-
-            UserProfile user = new UserProfile();
-            user.profileImageUrl = (String) obj.get("profile_image_url");
-            user.urlName = (String) obj.get("url_name");
-            user.displayName = (String) obj.get("display_name");
-
-            return user;
-        } catch (ParseException ex) {
-            return null;
-        }
-    }
-
-    
-    /**
-     * Propertyファイル保存.
-     * @return プロパティ成功可否
-     */
-    public boolean saveProperties(){
-        try {
-            prop.setProperty("oauth_token", accessToken);
-            prop.setProperty("oauth_token_secret", accessTokenSecret);
-            prop.store("OAuth Properties");
-            return true;
-        } catch (Exception ex){
-            return false;
         }
     }
 }

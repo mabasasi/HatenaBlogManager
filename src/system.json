@@ -1,0 +1,7 @@
+{
+  "tokenRequestURL":"https:\/\/www.hatena.com\/oauth\/token",
+  "accessScope":"read_public%2Cread_private%2Cwrite_public%2Cwrite_private",
+  "userInfomationURL":"http:\/\/n.hatena.com\/applications\/my.json",
+  "authorizationURL":"https:\/\/www.hatena.ne.jp\/touch\/oauth\/authorize",
+  "temporaryRequestURL":"https:\/\/www.hatena.com\/oauth\/initiate"
+}

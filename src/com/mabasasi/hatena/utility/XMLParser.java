@@ -2,7 +2,7 @@
 package com.mabasasi.hatena.utility;
 
 import com.mabasasi.hatena.data.BlogEntry;
-import com.mabasasi.hatena.data.EntryParameter;
+import com.mabasasi.hatena.parameter.EntryParameter;
 import javax.xml.xpath.*;
 import org.w3c.dom.Document;
 import org.w3c.dom.Node;

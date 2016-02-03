@@ -1,5 +1,5 @@
 
-package com.mabasasi.hatena.data;
+package com.mabasasi.hatena.parameter;
 
 /**
  * レスポンスXMLのパラメータ一覧.

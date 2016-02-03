@@ -16,7 +16,7 @@ import org.xml.sax.SAXException;
 /**
  * XMLの変換クラス.
  * <p>
- * String, InputStream, dom.Node -> dom.document。
+ * String, InputStream, dom.Node &lt;-&gt; dom.document.
  * </p>
  * @author mabasasi
  */
